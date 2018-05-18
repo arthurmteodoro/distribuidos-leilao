@@ -56,40 +56,42 @@ public class Model extends ReceiverAdapter implements RequestHandler
             {
                 String[] userAndKey = (String[]) messageReceived.content;
                 System.out.println("\t[DEBUG] Modelo: Chave: "+userAndKey[0]+" Valor Recebido: "+userAndKey[1]);
-                if(usersAndKeys.containsKey(userAndKey[0]))
-                {
-                    String value = usersAndKeys.get(userAndKey[0]);
-                    System.out.println("\t[DEBUG] Modelo: Chave: "+userAndKey[0]+" Valor Recebido: "+userAndKey[1]+" Valor pegado: "+value);
-                    if(value.equals(userAndKey[1]))
-                    {
-                        System.out.println("show");
-                        return new AppMessage(AppMessage.MODEL_LOGIN_OK, null);
-                    }
-                    else
-                    {
-                        System.out.println("nao show");
-                        return new AppMessage(AppMessage.MODEL_LOGIN_ERROR, null);
-                    }
-                }
+
+                if(checkLogin(userAndKey[0], userAndKey[1]))
+                    return new AppMessage(AppMessage.MODEL_LOGIN_OK, null);
                 else
-                {
-                    System.out.println("nao show");
                     return new AppMessage(AppMessage.MODEL_LOGIN_ERROR, null);
-                }
             }
             else if(messageReceived.identifier == AppMessage.MODEL_CREATE_USER)
             {
                 String[] userAndKey = (String[]) messageReceived.content;
-                if(usersAndKeys.containsKey(userAndKey[0]))
-                    return new AppMessage(AppMessage.MODEL_CREATE_USER_ERROR, "User already exist");
-                else
-                {
-                    usersAndKeys.put(userAndKey[0], userAndKey[1]);
+                if(createUser(userAndKey[0], userAndKey[1]))
                     return new AppMessage(AppMessage.MODEL_CREATE_USER_OK, "User created with success");
-                }
+                else
+                    return new AppMessage(AppMessage.MODEL_CREATE_USER_ERROR, "User already exist");
             }
         }
 
         return new AppMessage(AppMessage.CLASS_ERROR, null);
+    }
+
+    private boolean checkLogin(String user, String key)
+    {
+        if(usersAndKeys.containsKey(user))
+        {
+            String keyInHash = usersAndKeys.get(user);
+            return keyInHash.equals(key);
+        }
+        return false;
+    }
+
+    private boolean createUser(String user, String key)
+    {
+        if(!usersAndKeys.containsKey(user))
+        {
+            usersAndKeys.put(user, key);
+            return true;
+        }
+        return false;
     }
 }
