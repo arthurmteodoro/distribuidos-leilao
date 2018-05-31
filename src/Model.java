@@ -4,7 +4,10 @@ import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 
+import java.io.*;
 import java.util.HashMap;
+import java.util.Timer;
+import java.util.TimerTask;
 
 /*
 * TODO: Mudar a forma de não existir mensagem duplicadas vindas da visão (porque da forma que está o modelo necessita de dados vindo da visão)
@@ -36,7 +39,6 @@ public class Model extends ReceiverAdapter implements RequestHandler
     {
         this.usersAndKeys = new HashMap<>();
         this.seqs = new HashMap<>();
-        usersAndKeys.put("asd", "qwe");
 
         this.channelModel = new JChannel("auction.xml");
         this.channelModel.setReceiver(this);
@@ -48,6 +50,11 @@ public class Model extends ReceiverAdapter implements RequestHandler
 
         this.channelModel.connect("AuctionModelCluster");
         this.channelControl.connect("AuctionControlCluster");
+
+        load_clients();
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(new WriterTask(), 5000, 5000);
+
         eventLoop();
         this.channelModel.close();
     }
@@ -107,13 +114,57 @@ public class Model extends ReceiverAdapter implements RequestHandler
         return false;
     }
 
-    private boolean createUser(String user, String key)
+    private boolean createUser(String user, String key) throws IOException
     {
         if(!usersAndKeys.containsKey(user))
         {
             usersAndKeys.put(user, key);
+            write_users();
             return true;
         }
         return false;
+    }
+
+    private void write_users() throws IOException
+    {
+        File file = new File("data/clients.bin");
+        if(!file.exists())
+            file.createNewFile();
+
+        ObjectOutputStream writer = new ObjectOutputStream(new FileOutputStream(file));
+        writer.writeObject(this.usersAndKeys);
+        writer.close();
+    }
+
+    private void load_clients() throws IOException, ClassNotFoundException
+    {
+        File file = new File("data/clients.bin");
+        if(file.exists())
+        {
+            try
+            {
+                ObjectInputStream reader = new ObjectInputStream(new FileInputStream(file));
+                this.usersAndKeys = (HashMap<String, String>) reader.readObject();
+                reader.close();
+            } catch (EOFException e)
+            {
+                this.usersAndKeys = new HashMap<>();
+            }
+        }
+    }
+
+    class WriterTask extends TimerTask
+    {
+        @Override
+        public void run()
+        {
+            try
+            {
+                write_users();
+            } catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        }
     }
 }

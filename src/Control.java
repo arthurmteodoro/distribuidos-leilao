@@ -1,15 +1,10 @@
-import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
-import org.jgroups.util.Rsp;
-import org.jgroups.util.RspList;
-import org.jgroups.util.Util;
 
 import java.util.List;
-import java.util.Set;
 
 public class Control extends ReceiverAdapter implements RequestHandler
 {
@@ -79,16 +74,24 @@ public class Control extends ReceiverAdapter implements RequestHandler
         AppMessage controlLogin = new AppMessage(Requisition.CONTROL_REQUEST_LOGIN, userLoginRequest,
                 messageReceived.clientAddress, messageReceived.sequenceNumber);
 
-        RspList rspList = dispatcherControl.sendRequestMulticast(controlLogin, ResponseMode.GET_ALL, channelControl.getAddress());
-        if(rspList.getResults().size() == 0)
+        List responses = dispatcherControl.sendRequestMulticast(controlLogin, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+        if(responses.size() == 0)
             return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_ERROR, "Login error");
 
-        for(Object response : rspList.getResults())
+        int nop_counter = 0;
+
+        for(Object response : responses)
         {
             AppMessage msg = (AppMessage) response;
             if(msg.requisition == Requisition.MODEL_RESPONSE_LOGIN_ERROR)
                 return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_ERROR, "Login error");
+            else if(msg.requisition == Requisition.NOP)
+                nop_counter++;
         }
+
+        if(nop_counter == responses.size())
+            return new AppMessage(Requisition.NOP, null);
+
         return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_OK, "Login ok");
     }
 
@@ -102,12 +105,19 @@ public class Control extends ReceiverAdapter implements RequestHandler
         if(responsesCreateUser.size() == 0)
             return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR, null);
 
+        int nop_counter = 0;
+
         for(Object response : responsesCreateUser)
         {
             AppMessage msg = (AppMessage) response;
             if(msg.requisition == Requisition.MODEL_RESPONSE_CREATE_USER_ERROR)
                 return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR, null);
+            else if(msg.requisition == Requisition.NOP)
+                nop_counter++;
         }
+
+        if(nop_counter == responsesCreateUser.size())
+            return new AppMessage(Requisition.NOP, null);
         return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_OK, null);
     }
 }

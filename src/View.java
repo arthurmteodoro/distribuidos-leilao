@@ -3,13 +3,10 @@ import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
-import org.jgroups.util.RspList;
 
+import java.io.Console;
 import java.util.List;
 import java.util.Scanner;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.ExecutionException;
 
 public class View extends ReceiverAdapter implements RequestHandler
 {
@@ -17,6 +14,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private RequestDispatcher dispatcherView;
 
     private int sequenceNumber;
+    private Console console;
 
     public static void main(String[] args)
     {
@@ -33,6 +31,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private void start() throws Exception
     {
         this.sequenceNumber = -1;
+        this.console = System.console();
 
         this.channelView = new JChannel("auction.xml");
         this.channelView.setReceiver(this);
@@ -100,7 +99,7 @@ public class View extends ReceiverAdapter implements RequestHandler
 
     private boolean login(String user, String password) throws Exception
     {
-        String[] content = {user, password};
+        String[] content = {user, Utils.gerarSHA256(password.getBytes())};
         AppMessage loginMessage = new AppMessage(Requisition.VIEW_REQUEST_LOGIN, content,
                 channelView.getAddress(), sequenceNumber);
         this.sequenceNumber++;
@@ -110,18 +109,25 @@ public class View extends ReceiverAdapter implements RequestHandler
         if(controlResponse.size() == 0)
             return false;
 
+        int nop_counter = 0;
+
         for(Object value : controlResponse)
         {
             AppMessage response = (AppMessage) value;
             if(response.requisition == Requisition.CONTROL_RESPONSE_LOGIN_ERROR)
                 return false;
+            else if(response.requisition == Requisition.NOP)
+                nop_counter++;
         }
+
+        if(nop_counter == controlResponse.size())
+            return false;
         return true;
     }
 
     private boolean createUser(String user, String password) throws Exception
     {
-        String[] content = {user, password};
+        String[] content = {user, Utils.gerarSHA256(password.getBytes())};
         AppMessage createUser = new AppMessage(Requisition.VIEW_REQUEST_CREATE_USER, content,
                 channelView.getAddress(), sequenceNumber);
         this.sequenceNumber++;
@@ -131,12 +137,19 @@ public class View extends ReceiverAdapter implements RequestHandler
         if(controlResponse.size() == 0)
             return false;
 
+        int nop_counter = 0;
+
         for(Object value : controlResponse)
         {
             AppMessage response = (AppMessage) value;
             if(response.requisition == Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR)
                 return false;
+            else if (response.requisition == Requisition.NOP)
+                nop_counter++;
         }
+
+        if(nop_counter == controlResponse.size())
+            return false;
         return true;
     }
 }
