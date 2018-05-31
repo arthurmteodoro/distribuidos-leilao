@@ -114,7 +114,7 @@ public class View extends ReceiverAdapter implements RequestHandler
         for(Object value : controlResponse)
         {
             AppMessage response = (AppMessage) value;
-            if(response.requisition == Requisition.CONTROL_RESPONSE_LOGIN_ERROR)
+            if(response.requisition == Requisition.CONTROL_RESPONSE_LOGIN && ((boolean) response.content == false))
                 return false;
             else if(response.requisition == Requisition.NOP)
                 nop_counter++;
@@ -142,7 +142,7 @@ public class View extends ReceiverAdapter implements RequestHandler
         for(Object value : controlResponse)
         {
             AppMessage response = (AppMessage) value;
-            if(response.requisition == Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR)
+            if(response.requisition == Requisition.CONTROL_RESPONSE_CREATE_USER && ((boolean) response.content == false))
                 return false;
             else if (response.requisition == Requisition.NOP)
                 nop_counter++;

@@ -84,17 +84,17 @@ public class Model extends ReceiverAdapter implements RequestHandler
                 {
                     String[] userLoginRequest = (String[]) messageReceived.content;
                     if (checkLogin(userLoginRequest[0], userLoginRequest[1]))
-                        return new AppMessage(Requisition.MODEL_RESPONSE_LOGIN_OK, "Login ok");
+                        return new AppMessage(Requisition.MODEL_RESPONSE_LOGIN, true);
                     else
-                        return new AppMessage(Requisition.MODEL_RESPONSE_LOGIN_ERROR, "Login error");
+                        return new AppMessage(Requisition.MODEL_RESPONSE_LOGIN, false);
                 }
                 else if (messageReceived.requisition == Requisition.CONTROL_REQUEST_CREATE_USER)
                 {
                     String[] userCreateRequest = (String[]) messageReceived.content;
                     if (createUser(userCreateRequest[0], userCreateRequest[1]))
-                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER_OK, null);
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER, true);
                     else
-                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER_ERROR, null);
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER, false);
                 }
             }
 

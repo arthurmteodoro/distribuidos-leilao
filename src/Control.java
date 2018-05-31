@@ -76,15 +76,15 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
         List responses = dispatcherControl.sendRequestMulticast(controlLogin, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
         if(responses.size() == 0)
-            return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_ERROR, "Login error");
+            return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN, false);
 
         int nop_counter = 0;
 
         for(Object response : responses)
         {
             AppMessage msg = (AppMessage) response;
-            if(msg.requisition == Requisition.MODEL_RESPONSE_LOGIN_ERROR)
-                return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_ERROR, "Login error");
+            if(msg.requisition == Requisition.MODEL_RESPONSE_LOGIN && ((boolean) msg.content) == false)
+                return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN, false);
             else if(msg.requisition == Requisition.NOP)
                 nop_counter++;
         }
@@ -92,7 +92,7 @@ public class Control extends ReceiverAdapter implements RequestHandler
         if(nop_counter == responses.size())
             return new AppMessage(Requisition.NOP, null);
 
-        return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN_OK, "Login ok");
+        return new AppMessage(Requisition.CONTROL_RESPONSE_LOGIN, true);
     }
 
     private Object create_user(AppMessage messageReceived) throws Exception
@@ -103,21 +103,21 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
         List responsesCreateUser = dispatcherControl.sendRequestMulticast(controlCreate, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
         if(responsesCreateUser.size() == 0)
-            return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR, null);
+            return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER, false);
 
         int nop_counter = 0;
 
         for(Object response : responsesCreateUser)
         {
             AppMessage msg = (AppMessage) response;
-            if(msg.requisition == Requisition.MODEL_RESPONSE_CREATE_USER_ERROR)
-                return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_ERROR, null);
+            if(msg.requisition == Requisition.MODEL_RESPONSE_CREATE_USER && ((boolean) msg.content == false))
+                return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER, false);
             else if(msg.requisition == Requisition.NOP)
                 nop_counter++;
         }
 
         if(nop_counter == responsesCreateUser.size())
             return new AppMessage(Requisition.NOP, null);
-        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER_OK, null);
+        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER, true);
     }
 }
