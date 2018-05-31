@@ -1,6 +1,8 @@
 public enum Requisition
 {
+    // mensagem de boas vindas, despedida, nenhuma operacao realizada e erro de tipo de classe
     BONJOUR, AU_REVOIR, NOP, CLASS_ERROR,
+
     // pedidos e respostas trocadas pelo controle e modelo para realizar o login
     CONTROL_REQUEST_LOGIN, MODEL_RESPONSE_LOGIN,
     // pedidos e respostas trocadas pelo controle e visao para realizar o login

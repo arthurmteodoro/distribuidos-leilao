@@ -4,6 +4,7 @@ import java.util.Formatter;
 
 public class Utils
 {
+    // funcao para transformar um vetor de bytes em uma string em hexa
     private static String byteArray2Hex(final byte[] hash)
     {
         Formatter formatter = new Formatter();
@@ -14,6 +15,7 @@ public class Utils
         return formatter.toString();
     }
 
+    // funcao para gerar uma hash do tipo sha 256 do objeto
     public static String gerarSHA256(byte[] convertme) throws NoSuchAlgorithmException
     {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
