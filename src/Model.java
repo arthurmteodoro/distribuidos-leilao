@@ -1,3 +1,4 @@
+import com.sun.org.apache.regexp.internal.RE;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
@@ -5,6 +6,7 @@ import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -24,6 +26,8 @@ public class Model extends ReceiverAdapter implements RequestHandler
     private HashMap<String, String> usersAndKeys; //mapa para guardar os usuarios e suas senhas
     private HashMap<Address, Integer> seqs; //mapa para manter o numero de sequencia dos enderecos da visao
 
+    private ArrayList<Item> items; // lista com todos os items existentes no sistema
+
     public static void main(String[] args)
     {
         try
@@ -40,6 +44,8 @@ public class Model extends ReceiverAdapter implements RequestHandler
         // instancia os mapas
         this.usersAndKeys = new HashMap<>();
         this.seqs = new HashMap<>();
+
+        this.items = new ArrayList<>();
 
         // instancia o canal e o despachante do modelo
         this.channelModel = new JChannel("auction.xml");
@@ -76,7 +82,7 @@ public class Model extends ReceiverAdapter implements RequestHandler
         if(message.getObject() instanceof AppMessage) //caso for uma mensagem do tipo que o codigo executa
         {
             AppMessage messageReceived = (AppMessage) message.getObject(); //faz o cast da mensagem para o tipo apropriado
-
+            System.out.println("Recebeu mensagem do tipo "+messageReceived.requisition);
             // se e a primeira mensagem daquele cliente ou seu numero de sequencia for menor que o que o modelo tem, deixa executar
             // isso garante que nao existe duplicatas caso mais de um processo do controle envie a mesma mensagem da visao
             if(!seqs.containsKey(messageReceived.clientAddress) || seqs.get(messageReceived.clientAddress) < messageReceived.sequenceNumber)
@@ -85,11 +91,7 @@ public class Model extends ReceiverAdapter implements RequestHandler
                 if(!seqs.containsKey(messageReceived.clientAddress))
                     seqs.put(messageReceived.clientAddress, messageReceived.sequenceNumber);
                 else
-                {
-                    //seqs.remove(messageReceived.clientAddress);
-                    //seqs.put(messageReceived.clientAddress, messageReceived.sequenceNumber);
                     seqs.replace(messageReceived.clientAddress, messageReceived.sequenceNumber);
-                }
 
                 // caso o controle pediu um login
                 if (messageReceived.requisition == Requisition.CONTROL_REQUEST_LOGIN)
@@ -108,6 +110,25 @@ public class Model extends ReceiverAdapter implements RequestHandler
                         return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER, true);
                     else
                         return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_USER, false);
+                }
+                else if(messageReceived.requisition == Requisition.CONTROL_REQUEST_CREATE_ITEM)
+                {
+                    Item itemCreateRequest = (Item) messageReceived.content;
+                    if(createItem(itemCreateRequest))
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_ITEM, true);
+                    else
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CREATE_ITEM, false);
+                }
+                else if(messageReceived.requisition == Requisition.CONTROL_REQUEST_LIST_ITEM)
+                    return new AppMessage(Requisition.MODEL_RESPONSE_LIST_ITEM, this.items);
+                else if(messageReceived.requisition == Requisition.CONTROL_REQUEST_CHANGE_ITEM_STATE)
+                {
+                    Item item_change = (Item) ((Object[])messageReceived.content)[0];
+                    boolean valor = (boolean) ((Object[])messageReceived.content)[1];
+                    if(change_item_status(item_change, valor))
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CHANGE_ITEM_STATE, true);
+                    else
+                        return new AppMessage(Requisition.MODEL_RESPONSE_CHANGE_ITEM_STATE, false);
                 }
             }
             // a operacao pedida nao seja para o modelo ou e uma mensagem duplicada, envia NOP (nenhuma operacao)
@@ -138,6 +159,40 @@ public class Model extends ReceiverAdapter implements RequestHandler
             return true;
         }
         return false;
+    }
+
+    private boolean createItem(Item item)
+    {
+        for(Item i : this.items)
+        {
+            if(i.getName().equals(item.getName()) && i.getProprietario().equals(item.getProprietario()))
+                return false;
+        }
+
+        this.items.add(item);
+        return true;
+    }
+
+    private boolean change_item_status(Item item, boolean valor)
+    {
+        int index = -1;
+        for(int i = 0; i < this.items.size(); i++)
+        {
+            Item it = this.items.get(i);
+            if(it.getName().equals(item.getName()) && it.getProprietario().equals(item.getProprietario()))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if(this.items.get(index).isEm_leilao() == valor)
+            return false;
+        else
+        {
+            this.items.get(index).setEm_leilao(valor);
+            return true;
+        }
     }
 
     // funcao para escrever os usuarios no hd

@@ -1,10 +1,14 @@
+import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
 
+import java.util.ArrayList;
 import java.util.List;
+
+// TODO : caso exista mais de um controle, ele tambem vai ter que estar na lista de usuarios que vai participar do leilao para poder manter sua copia ok. Possiveis solucoes: (1) pegar todos os caras que sao controle antes e ja inserilos, (2) ficar trocando mensagem entre o controle para resolver isso, (3) juntas as respostas das salas diferentes
 
 public class Control extends ReceiverAdapter implements RequestHandler
 {
@@ -13,6 +17,8 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
     private JChannel channelView;
     private RequestDispatcher dispatcherView;
+
+    private ArrayList<Sala> salas;
 
     public static void main(String[] args)
     {
@@ -27,6 +33,8 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
     public void start() throws Exception
     {
+        this.salas = new ArrayList<>();
+
         // instancia o canal e o despachante do controle
         this.channelControl = new JChannel("auction.xml");
         this.channelControl.setReceiver(this);
@@ -58,10 +66,19 @@ public class Control extends ReceiverAdapter implements RequestHandler
         if(message.getObject() instanceof AppMessage)
         {
             AppMessage messageReceived = (AppMessage) message.getObject(); // faz a conversao para o tipo apropriado
+            System.out.println("Messagem do tipo: "+messageReceived.requisition);
             if(messageReceived.requisition == Requisition.VIEW_REQUEST_LOGIN) // caso seja uma requisicao de login da visao
                 return login(messageReceived);
             else if(messageReceived.requisition == Requisition.VIEW_REQUEST_CREATE_USER) // caso seja uma requisicao de criacao de usuario da visao
                 return create_user(messageReceived);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_CREATE_ITEM)
+                return create_item(messageReceived);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_LIST_ITEM)
+                return list_item(messageReceived);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_CREATE_ROOM)
+                return create_room(messageReceived, message.getSrc());
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_LIST_ROOM)
+                return new AppMessage(Requisition.CONTROL_RESPONSE_LIST_ROOM, this.salas);
 
             return new AppMessage(Requisition.NOP, null); //caso nao seja nenhuma requisicao para o controle
         }
@@ -148,5 +165,113 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
         // caso contrario, responde que criou um novo usuario com sucesso
         return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_USER, true);
+    }
+
+    private Object create_item(AppMessage messageReceived) throws Exception
+    {
+        Item new_item = (Item) messageReceived.content;
+
+        AppMessage controlMessage = new AppMessage(Requisition.CONTROL_REQUEST_CREATE_ITEM, new_item,
+                messageReceived.clientAddress, messageReceived.sequenceNumber);
+
+        List responsesCreateItem = dispatcherControl.sendRequestMulticast(controlMessage, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responsesCreateItem.size() == 0)
+            return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ITEM, false);
+
+        int nop_counter = 0;
+
+        for(Object response : responsesCreateItem)
+        {
+            AppMessage msg = (AppMessage) response;
+
+            // caso a mensagem seja do tipo resposta do modelo para criacao de um novo usuario e seu conteudo for falso, responde que deu erro
+            if(msg.requisition == Requisition.MODEL_RESPONSE_CREATE_ITEM && ((boolean) msg.content == false))
+                return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ITEM, false);
+                // caso for nenhuma operacao realiza, incrementa a contagem
+            else if(msg.requisition == Requisition.NOP)
+                nop_counter++;
+        }
+
+        // caso so veio respostas nop, responde que nao realizou nenhuma operacao
+        if(nop_counter == responsesCreateItem.size())
+            return new AppMessage(Requisition.NOP, null);
+
+        // caso contrario, responde que criou um novo usuario com sucesso
+        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ITEM, true);
+    }
+
+    private Object list_item(AppMessage messageReceived) throws Exception
+    {
+        AppMessage control_list_item = new AppMessage(Requisition.CONTROL_REQUEST_LIST_ITEM, null,
+                messageReceived.clientAddress, messageReceived.sequenceNumber);
+
+        List responsesListItem = dispatcherControl.sendRequestMulticast(control_list_item, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responsesListItem.size() == 0)
+            return new AppMessage(Requisition.CONTROL_RESPONSE_LIST_ITEM, null);
+
+        int nop_counter = 0;
+        int index_nao_nop = 0;
+        int cont = -1;
+
+        for(Object response : responsesListItem)
+        {
+            cont++;
+            AppMessage msg = (AppMessage) response;
+
+            if(msg.requisition == Requisition.NOP)
+                nop_counter++;
+            else
+                index_nao_nop = cont;
+        }
+
+        // caso so veio respostas nop, responde que nao realizou nenhuma operacao
+        if(nop_counter == responsesListItem.size())
+            return new AppMessage(Requisition.NOP, null);
+
+        // caso contrario, responde que criou um novo usuario com sucesso
+        AppMessage msg_model = (AppMessage) responsesListItem.get(index_nao_nop);
+        return new AppMessage(Requisition.CONTROL_RESPONSE_LIST_ITEM, msg_model.content);
+    }
+
+    private Object create_room(AppMessage messageReceived, Address leiloeiro) throws Exception
+    {
+        Object[] content = (Object[]) messageReceived.content;
+
+        Object[] pedido_troca = {content[0], true};
+        AppMessage control_list_item = new AppMessage(Requisition.CONTROL_REQUEST_CHANGE_ITEM_STATE, pedido_troca,
+                messageReceived.clientAddress, messageReceived.sequenceNumber);
+
+        List responsesListItem = dispatcherControl.sendRequestMulticast(control_list_item, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responsesListItem.size() == 0)
+            return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, Boolean.FALSE);
+
+        int nop_counter = 0;
+
+        for(Object response : responsesListItem)
+        {
+            AppMessage msg = (AppMessage) response;
+
+            if(msg.requisition == Requisition.MODEL_RESPONSE_CHANGE_ITEM_STATE && ((boolean) msg.content == false))
+                return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, Boolean.FALSE);
+            else if(msg.requisition == Requisition.NOP)
+                nop_counter++;
+        }
+
+        if(nop_counter == responsesListItem.size())
+            return new AppMessage(Requisition.NOP, null);
+
+
+        Item item = (Item) content[0];
+        Address end = (Address) content[1];
+        String leiloeiro_nome = (String) content[2];
+
+        Sala nova_sala = new Sala(item, end, leiloeiro_nome);
+        nova_sala.insert_user("CONTROLE"+channelControl.getAddress(), channelControl.getAddress());
+
+        salas.add(nova_sala);
+        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, nova_sala.users_addr());
     }
 }
