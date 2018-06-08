@@ -5,6 +5,7 @@ import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
 
+import javax.swing.plaf.synth.SynthOptionPaneUI;
 import java.io.Console;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,8 @@ public class View extends ReceiverAdapter implements RequestHandler
 
     private int sequenceNumber;
     private Sala sala_que_esta = null;
+    private String user_logado;
+    private boolean acabou_leilao;
 
     public static void main(String[] args)
     {
@@ -100,6 +103,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private void user_logado(String usuario) throws Exception
     {
         String usuario_atual = usuario;
+        user_logado = usuario;
         Scanner keyboard = new Scanner(System.in);
 
         boolean logout = false;
@@ -165,8 +169,10 @@ public class View extends ReceiverAdapter implements RequestHandler
                 else
                 {
                     System.out.println("Sala criada com sucesso");
+                    System.out.println("\n\nATENCAO LEILOEIRO, COM GRANDES PODERES VEM GRANDES RESPONSABILIDADES");
+                    System.out.println("VOCÊ É O RESPONSÁVEL POR TERMINAR COM O LEILÃO");
+                    System.out.println("Para isso, dê um lance do valor -1");
                     Sala sala = (Sala) valor;
-                    //apresenta_para_sala(sala, usuario_atual);
                     em_sala(usuario_atual, sala);
                 }
             }
@@ -204,23 +210,45 @@ public class View extends ReceiverAdapter implements RequestHandler
 
     public void em_sala(String nome_user, Sala sala) throws Exception
     {
-        System.out.println("\n\n======= BEM VINDO A SALA "+sala+" =======");
+        System.out.println("\n======= BEM VINDO A SALA "+sala+" =======");
         Scanner keyboard = new Scanner(System.in);
 
         this.sala_que_esta = sala;
 
-        boolean acabou = false;
-        while(!acabou)
+        this.acabou_leilao = false;
+        while(!this.acabou_leilao)
         {
             System.out.print("Digite seu lance: ");
             Double valor_lance = Double.valueOf(keyboard.nextLine());
-
-            Lance lance = new Lance(nome_user, valor_lance, sala.id);
-            System.out.println(sala_que_esta.getUsers_addr());
-            if(da_lance(sala_que_esta, lance))
-                System.out.println("LANCE ACEITO!!");
+            if(valor_lance != -1)
+            {
+                Lance lance = new Lance(nome_user, valor_lance, sala.id);
+                //System.out.println(sala_que_esta.getUsers_addr());
+                if (da_lance(sala_que_esta, lance))
+                {
+                    sala_que_esta.insert_lance(lance);
+                    System.out.println("\nLANCE ACEITO!!");
+                }
+                else
+                    System.out.println("\nLANCE INVALIDO");
+            }
             else
-                System.out.println("LANCE INVALIDO");
+            {
+                if(this.sala_que_esta.getLeiloeiro().toString().equals(channelView.getAddress().toString()))
+                {
+                    System.out.println("ATENÇÃO: VOCÊ DESEJA MESMO FECHAR ESTE LEILAO? (Y/N)");
+                    if(keyboard.nextLine().toLowerCase().equals("y"))
+                    {
+                        fecha_leilao(sala_que_esta);
+                    }
+                    else
+                        continue;
+                }
+                else
+                {
+                    this.acabou_leilao = true;
+                }
+            }
         }
     }
 
@@ -231,8 +259,8 @@ public class View extends ReceiverAdapter implements RequestHandler
         if(message.getObject() instanceof AppMessage)
         {
             AppMessage messageReceived = (AppMessage) message.getObject();
-            //if(sala_que_esta != null)
-            //{
+            if(sala_que_esta != null)
+            {
                 if (messageReceived.requisition == Requisition.VIEW_REQUEST_ENTER_ROOM)
                     return new AppMessage(Requisition.VIEW_RESPONSE_ENTER_ROOM, sala_que_esta);
                 else if (messageReceived.requisition == Requisition.BONJOUR)
@@ -244,7 +272,9 @@ public class View extends ReceiverAdapter implements RequestHandler
                 }
                 else if(messageReceived.requisition == Requisition.VIEW_REQUEST_NEW_BID)
                     return recebe_lance(messageReceived);
-            //}
+                else if(messageReceived.requisition == Requisition.AU_REVOIR)
+                    return processa_final(messageReceived);
+            }
 
             return new AppMessage(Requisition.NOP, null);
         }
@@ -462,10 +492,7 @@ public class View extends ReceiverAdapter implements RequestHandler
         List controlResponse = dispatcherView.sendRequestMulticast(list_item, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
 
         if(controlResponse.size() == 0)
-        {
-            System.out.println("0");
             return null;
-        }
 
         int nop_counter = 0;
         int non_nop_index = -1;
@@ -484,13 +511,9 @@ public class View extends ReceiverAdapter implements RequestHandler
 
         // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
         if(nop_counter == controlResponse.size())
-        {
-            System.out.println("NOP");
             return null;
-        }
 
         // caso contrario, diz que o usuario foi criado com sucesso
-        System.out.println("Chegou aqui");
         return (ArrayList<Sala>) ((AppMessage) controlResponse.get(non_nop_index)).content;
     }
 
@@ -531,6 +554,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private Sala pede_para_entrar_na_sala(Address leiloeiro) throws Exception
     {
         AppMessage pedido = new AppMessage(Requisition.VIEW_REQUEST_ENTER_ROOM, null);
+        sequenceNumber++;
 
         Object response = dispatcherView.sendRequestUnicast(leiloeiro, pedido, ResponseMode.GET_ALL);
         AppMessage msg = (AppMessage) response;
@@ -542,6 +566,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     {
         Object[] content = {user, sala.id};
         AppMessage ola = new AppMessage(Requisition.BONJOUR, content);
+        sequenceNumber++;
 
         List response = dispatcherView.sendRequestAnycast(sala.getUsers_addr(), ola, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
     }
@@ -549,6 +574,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private boolean da_lance(Sala sala, Lance lance) throws Exception
     {
         AppMessage novo_lance = new AppMessage(Requisition.VIEW_REQUEST_NEW_BID, lance);
+        sequenceNumber++;
 
         List response = dispatcherView.sendRequestAnycast(sala.getUsers_addr(), novo_lance, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
 
@@ -581,7 +607,7 @@ public class View extends ReceiverAdapter implements RequestHandler
             if (lance.getValue() > ultimo.getValue())
             {
                 sala_que_esta.insert_lance(lance);
-                System.out.println("[NOVO LANCE]: " + lance);
+                System.out.println("\n[NOVO LANCE]: " + lance);
                 return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
             }
             return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, false);
@@ -589,8 +615,75 @@ public class View extends ReceiverAdapter implements RequestHandler
         else
         {
             sala_que_esta.insert_lance(lance);
-            System.out.println("[NOVO LANCE]: " + lance);
+            System.out.println("\n[NOVO LANCE]: " + lance);
             return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
         }
+    }
+
+    private void notifica_que_acabou(Sala sala) throws Exception
+    {
+        AppMessage adeus = new AppMessage(Requisition.AU_REVOIR, sala.getLances().lastElement());
+        sequenceNumber++;
+
+        List response = dispatcherView.sendRequestAnycast(sala.getUsers_addr(), adeus, ResponseMode.GET_ALL).getResults();
+    }
+
+
+    private Object processa_final(AppMessage messageReceived)
+    {
+        Lance ganhador = (Lance) messageReceived.content;
+
+        if(ganhador.getUser().equals(this.user_logado))
+        {
+            System.out.println("\n\nPARABENS!!!!!!!!!");
+            System.out.println("Voce comprou o item por "+ganhador.getValue());
+            System.out.println("Pressione -1 para sair");
+        }
+        else
+        {
+            System.out.println("O usuario " + ganhador.getUser() + " comprou o item por " + ganhador.getValue());
+            System.out.println("Pressione -1 para sair");
+        }
+        this.acabou_leilao = true;
+        return new AppMessage(Requisition.BYE, null);
+    }
+
+    private boolean fecha_leilao(Sala sala) throws Exception
+    {
+        notifica_que_acabou(sala);
+
+        AppMessage close = new AppMessage(Requisition.VIEW_REQUEST_CLOSE_ROOM, sala.id,
+                channelView.getAddress(), sequenceNumber);
+        sequenceNumber++;
+
+        List controlResponse = dispatcherView.sendRequestMulticast(close, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+
+        if(controlResponse.size() == 0)
+            return false;
+
+        int nop_counter = 0;
+        int non_nop_index = -1;
+        int count = -1;
+
+        for(Object control_resp : controlResponse)
+        {
+            count++;
+            AppMessage response = (AppMessage) control_resp;
+
+            if(response.requisition == Requisition.CONTROL_RESPONSE_CLOSE_ROOM && !((boolean) response.content))
+                return false;
+            else if (response.requisition == Requisition.NOP)
+                nop_counter++;
+            else
+                non_nop_index = count;
+        }
+
+        // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
+        if(nop_counter == controlResponse.size())
+            return false;
+
+        this.acabou_leilao = true;
+        System.out.println("LEILAO TERMINADO!!!!!");
+        return true;
     }
 }

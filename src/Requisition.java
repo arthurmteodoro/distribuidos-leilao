@@ -1,7 +1,7 @@
 public enum Requisition
 {
     // mensagem de boas vindas, despedida, nenhuma operacao realizada e erro de tipo de classe
-    BONJOUR, SALUT, AU_REVOIR, NOP, CLASS_ERROR,
+    BONJOUR, SALUT, AU_REVOIR, NOP, BYE, CLASS_ERROR,
 
     // pedidos e respostas trocadas pelo controle e modelo para realizar o login
     CONTROL_REQUEST_LOGIN, MODEL_RESPONSE_LOGIN,
@@ -38,5 +38,10 @@ public enum Requisition
     // pedidos e respostas trocados entre a visao para entrar na sala
     VIEW_REQUEST_ENTER_ROOM, VIEW_RESPONSE_ENTER_ROOM,
 
-    VIEW_REQUEST_NEW_BID, VIEW_RESPONSE_NEW_BID
+    // pedidos e respostas trocados entre a visao para dar um novo lance
+    VIEW_REQUEST_NEW_BID, VIEW_RESPONSE_NEW_BID,
+
+    VIEW_REQUEST_CLOSE_ROOM, CONTROL_RESPONSE_CLOSE_ROOM,
+
+    CONTROL_REQUEST_SAVE_RESULT, MODEL_RESPONSE_SAVE_RESULT
 }

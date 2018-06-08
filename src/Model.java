@@ -27,6 +27,7 @@ public class Model extends ReceiverAdapter implements RequestHandler
     private HashMap<Address, Integer> seqs; //mapa para manter o numero de sequencia dos enderecos da visao
 
     private ArrayList<Item> items; // lista com todos os items existentes no sistema
+    private ArrayList<LeilaoResultado> resultados;
 
     public static void main(String[] args)
     {
@@ -46,6 +47,7 @@ public class Model extends ReceiverAdapter implements RequestHandler
         this.seqs = new HashMap<>();
 
         this.items = new ArrayList<>();
+        this.resultados = new ArrayList<>();
 
         // instancia o canal e o despachante do modelo
         this.channelModel = new JChannel("auction.xml");
@@ -83,6 +85,7 @@ public class Model extends ReceiverAdapter implements RequestHandler
         {
             AppMessage messageReceived = (AppMessage) message.getObject(); //faz o cast da mensagem para o tipo apropriado
             System.out.println("Recebeu mensagem do tipo "+messageReceived.requisition);
+
             // se e a primeira mensagem daquele cliente ou seu numero de sequencia for menor que o que o modelo tem, deixa executar
             // isso garante que nao existe duplicatas caso mais de um processo do controle envie a mesma mensagem da visao
             if(!seqs.containsKey(messageReceived.clientAddress) || seqs.get(messageReceived.clientAddress) < messageReceived.sequenceNumber)
@@ -129,6 +132,12 @@ public class Model extends ReceiverAdapter implements RequestHandler
                         return new AppMessage(Requisition.MODEL_RESPONSE_CHANGE_ITEM_STATE, true);
                     else
                         return new AppMessage(Requisition.MODEL_RESPONSE_CHANGE_ITEM_STATE, false);
+                }
+                else if(messageReceived.requisition == Requisition.CONTROL_REQUEST_SAVE_RESULT)
+                {
+                    LeilaoResultado res = (LeilaoResultado) messageReceived.content;
+                    if (final_leilao(res))
+                        return new AppMessage(Requisition.MODEL_RESPONSE_SAVE_RESULT, true);
                 }
             }
             // a operacao pedida nao seja para o modelo ou e uma mensagem duplicada, envia NOP (nenhuma operacao)
@@ -193,6 +202,12 @@ public class Model extends ReceiverAdapter implements RequestHandler
             this.items.get(index).setEm_leilao(valor);
             return true;
         }
+    }
+
+    private boolean final_leilao(LeilaoResultado res)
+    {
+        resultados.add(res);
+        return true;
     }
 
     // funcao para escrever os usuarios no hd

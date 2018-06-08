@@ -90,6 +90,8 @@ public class Control extends ReceiverAdapter implements RequestHandler
             }
             else if(messageReceived.requisition == Requisition.VIEW_REQUEST_NEW_BID)
                 return recebe_lance(messageReceived);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_CLOSE_ROOM)
+                return fecha_leilao(messageReceived);
 
             return new AppMessage(Requisition.NOP, null); //caso nao seja nenhuma requisicao para o controle
         }
@@ -317,6 +319,45 @@ public class Control extends ReceiverAdapter implements RequestHandler
         }
         salas.get(lance.sala).insert_lance(lance);
         return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
+    }
+
+    private Object fecha_leilao(AppMessage messageReceived) throws Exception
+    {
+        Sala sala = salas.get((int) messageReceived.content);
+        Lance lance_final = sala.getLances().lastElement();
+
+        LeilaoResultado resultado = new LeilaoResultado(lance_final.getUser(), sala.getItem(), lance_final.getValue());
+
+        AppMessage controlLogin = new AppMessage(Requisition.CONTROL_REQUEST_SAVE_RESULT, resultado,
+                messageReceived.clientAddress, messageReceived.sequenceNumber);
+
+        // pega a lista de respostas do canal de controle para o pedido de login
+        List responses = dispatcherControl.sendRequestMulticast(controlLogin, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        // caso a quantidade de respostas seja 0, responde que o login nao foi realizado com sucesso
+        if(responses.size() == 0)
+            return new AppMessage(Requisition.CONTROL_RESPONSE_CLOSE_ROOM, false);
+
+        int nop_counter = 0; // inicia o contador de nao operacao em 0
+
+        for(Object response : responses) // percorre todos os objetos que veio na resposta
+        {
+            AppMessage msg = (AppMessage) response; // faz a conversao para o tipo correto
+
+            // se a resposta foi uma resposta vinda do modelo e seu conteudo foi falso, envia uma resposta de falha de login
+            if(msg.requisition == Requisition.MODEL_RESPONSE_SAVE_RESULT && ((boolean) msg.content) == false)
+                return new AppMessage(Requisition.CONTROL_RESPONSE_CLOSE_ROOM, false);
+                // caso a resposta foi uma nao execucao de operacao, incrementa o contador de nop
+            else if(msg.requisition == Requisition.NOP)
+                nop_counter++;
+        }
+
+        // caso todos as respostas foi nop, envia que a resposta do login foi nop
+        if(nop_counter == responses.size())
+            return new AppMessage(Requisition.NOP, null);
+
+        // caso contrario, responde que o login foi realizo com sucesso
+        return new AppMessage(Requisition.CONTROL_RESPONSE_CLOSE_ROOM, true);
     }
 
 }
