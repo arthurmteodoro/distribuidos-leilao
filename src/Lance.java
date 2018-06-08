@@ -4,11 +4,19 @@ public class Lance implements Serializable
 {
     private String user;
     private Double value;
+    public int sala;
 
-    public Lance(String user, Double value)
+    public Lance(String user, Double value, int sala)
     {
         this.user = user;
         this.value = value;
+        this.sala = sala;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "Usuario: "+user+" Valor: "+value;
     }
 
     public String getUser()
@@ -30,4 +38,6 @@ public class Lance implements Serializable
     {
         this.value = value;
     }
+
+
 }

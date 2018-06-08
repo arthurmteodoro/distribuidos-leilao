@@ -19,6 +19,7 @@ public class Control extends ReceiverAdapter implements RequestHandler
     private RequestDispatcher dispatcherView;
 
     private ArrayList<Sala> salas;
+    int sala_id = 0;
 
     public static void main(String[] args)
     {
@@ -79,6 +80,16 @@ public class Control extends ReceiverAdapter implements RequestHandler
                 return create_room(messageReceived, message.getSrc());
             else if(messageReceived.requisition == Requisition.VIEW_REQUEST_LIST_ROOM)
                 return new AppMessage(Requisition.CONTROL_RESPONSE_LIST_ROOM, this.salas);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_AUCTIONEER)
+                return get_leiloeiro(messageReceived);
+            else if(messageReceived.requisition == Requisition.BONJOUR)
+            {
+                Object[] content = (Object[]) messageReceived.content;
+                salas.get((int) content[1]).insert_user((String)content[0], message.getSrc());
+                return new AppMessage(Requisition.SALUT, null);
+            }
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_NEW_BID)
+                return recebe_lance(messageReceived);
 
             return new AppMessage(Requisition.NOP, null); //caso nao seja nenhuma requisicao para o controle
         }
@@ -268,10 +279,44 @@ public class Control extends ReceiverAdapter implements RequestHandler
         Address end = (Address) content[1];
         String leiloeiro_nome = (String) content[2];
 
-        Sala nova_sala = new Sala(item, end, leiloeiro_nome);
-        nova_sala.insert_user("CONTROLE"+channelControl.getAddress(), channelControl.getAddress());
+        Sala nova_sala = new Sala(item, end, leiloeiro_nome, sala_id);
+        nova_sala.insert_user("CONTROLE"+channelView.getAddress(), channelView.getAddress());
+        nova_sala.insert_user(leiloeiro_nome, leiloeiro);
 
         salas.add(nova_sala);
-        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, nova_sala.users_addr());
+        sala_id++;
+        return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, nova_sala);
     }
+
+    private Object get_leiloeiro(AppMessage messageReceived) throws Exception
+    {
+        Sala sala_buscada = (Sala) messageReceived.content;
+
+        for(int i = 0; i < this.salas.size(); i++)
+        {
+            if(sala_buscada.equals(salas.get(i)))
+            {
+                return new AppMessage(Requisition.CONTROL_RESPONSE_AUCTIONEER, salas.get(i).getLeiloeiro());
+            }
+        }
+        return new AppMessage(Requisition.NOP, null);
+    }
+
+    private Object recebe_lance(AppMessage message) throws Exception
+    {
+        Lance lance = (Lance) message.content;
+
+        if(salas.get(lance.sala).getLances().size() > 0)
+        {
+            if (lance.getValue() > salas.get(lance.sala).getLances().lastElement().getValue())
+            {
+                salas.get(lance.sala).insert_lance(lance);
+                return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
+            }
+            return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, false);
+        }
+        salas.get(lance.sala).insert_lance(lance);
+        return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
+    }
+
 }

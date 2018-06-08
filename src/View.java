@@ -9,6 +9,7 @@ import java.io.Console;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import java.util.Vector;
 
 public class View extends ReceiverAdapter implements RequestHandler
 {
@@ -16,6 +17,7 @@ public class View extends ReceiverAdapter implements RequestHandler
     private RequestDispatcher dispatcherView;
 
     private int sequenceNumber;
+    private Sala sala_que_esta = null;
 
     public static void main(String[] args)
     {
@@ -109,6 +111,7 @@ public class View extends ReceiverAdapter implements RequestHandler
             System.out.println("2. Listar itens");
             System.out.println("3. Criar Sala");
             System.out.println("4. Listar salas existentes");
+            System.out.println("5. Entrar em uma sala");
             System.out.println("0. Logout");
             System.out.print(">");
             String input = keyboard.nextLine().toLowerCase();
@@ -137,7 +140,7 @@ public class View extends ReceiverAdapter implements RequestHandler
                     System.out.println("[");
                     for(Item i : itens)
                     {
-                        System.out.println("\t{Nome: "+i.getName()+" Descrição: "+i.getDescricao()+" Valor mínimo: "+i.getValue()+" Dono: "+i.getName()+"},");
+                        System.out.println("\t{Nome: "+i.getName()+" Descrição: "+i.getDescricao()+" Valor mínimo: "+i.getValue()+" Dono: "+i.getProprietario()+"},");
                     }
             }
             else if(Integer.valueOf(input) == 3)
@@ -150,7 +153,7 @@ public class View extends ReceiverAdapter implements RequestHandler
                 int cont = 0;
                 for(Item i : itens)
                 {
-                    System.out.println("\t["+cont+"]{Nome: "+i.getName()+" Descrição: "+i.getDescricao()+" Valor mínimo: "+i.getValue()+" Dono: "+i.getName()+"},");
+                    System.out.println("\t["+cont+"]{Nome: "+i.getName()+" Descrição: "+i.getDescricao()+" Valor mínimo: "+i.getValue()+" Dono: "+i.getProprietario()+"},");
                 }
 
                 System.out.print("Digite o indice do item que deseja leiloar: ");
@@ -162,14 +165,35 @@ public class View extends ReceiverAdapter implements RequestHandler
                 else
                 {
                     System.out.println("Sala criada com sucesso");
-                    ArrayList<Address> participantes = (ArrayList<Address>) valor;
-                    em_sala(usuario_atual, participantes, usuario_atual+"/"+itens.get(index).getName());
+                    Sala sala = (Sala) valor;
+                    //apresenta_para_sala(sala, usuario_atual);
+                    em_sala(usuario_atual, sala);
                 }
             }
             else if(Integer.valueOf(input) == 4)
             {
                 ArrayList<Sala> salas = get_list_salas();
                 System.out.println(salas);
+            }
+            else if(Integer.valueOf(input) == 5)
+            {
+                ArrayList<Sala> salas_existentes = get_list_salas();
+                System.out.println("Quantidades de salas: "+salas_existentes.size());
+                for(int i = 0; i < salas_existentes.size(); i++)
+                {
+                    System.out.println("\t["+i+"] "+salas_existentes.get(i));
+                }
+                System.out.print("Digite a sala escolhida: ");
+                int index_sala = Integer.parseInt(keyboard.nextLine());
+
+                if(index_sala == -1)
+                    continue;
+
+                Address leiloeiro = get_leiloeiro_add(salas_existentes.get(index_sala));
+
+                Sala sala = pede_para_entrar_na_sala(leiloeiro);
+                apresenta_para_sala(sala, usuario_atual);
+                em_sala(usuario_atual, sala);
             }
             else if(Integer.valueOf(input) == 0)
                 logout = true;
@@ -178,12 +202,26 @@ public class View extends ReceiverAdapter implements RequestHandler
         System.out.println("\n\n\n Até mais :)");
     }
 
-    public void em_sala(String nome_user, ArrayList<Address> participantes, String nome_sala)
+    public void em_sala(String nome_user, Sala sala) throws Exception
     {
-        System.out.println("\n\n======= BEM VINDO A SALA "+nome_sala.toUpperCase()+" =======");
-
+        System.out.println("\n\n======= BEM VINDO A SALA "+sala+" =======");
         Scanner keyboard = new Scanner(System.in);
 
+        this.sala_que_esta = sala;
+
+        boolean acabou = false;
+        while(!acabou)
+        {
+            System.out.print("Digite seu lance: ");
+            Double valor_lance = Double.valueOf(keyboard.nextLine());
+
+            Lance lance = new Lance(nome_user, valor_lance, sala.id);
+            System.out.println(sala_que_esta.getUsers_addr());
+            if(da_lance(sala_que_esta, lance))
+                System.out.println("LANCE ACEITO!!");
+            else
+                System.out.println("LANCE INVALIDO");
+        }
     }
 
     // funcao que trata a interrupcao de uma nova mensagem
@@ -193,6 +231,20 @@ public class View extends ReceiverAdapter implements RequestHandler
         if(message.getObject() instanceof AppMessage)
         {
             AppMessage messageReceived = (AppMessage) message.getObject();
+            //if(sala_que_esta != null)
+            //{
+                if (messageReceived.requisition == Requisition.VIEW_REQUEST_ENTER_ROOM)
+                    return new AppMessage(Requisition.VIEW_RESPONSE_ENTER_ROOM, sala_que_esta);
+                else if (messageReceived.requisition == Requisition.BONJOUR)
+                {
+                    Object[] content = (Object[]) messageReceived.content;
+                    sala_que_esta.insert_user((String)content[0], message.getSrc());
+                    System.out.println("USUARIO "+(String) content[0]+" ENTROU NA SALA");
+                    return new AppMessage(Requisition.SALUT, null);
+                }
+                else if(messageReceived.requisition == Requisition.VIEW_REQUEST_NEW_BID)
+                    return recebe_lance(messageReceived);
+            //}
 
             return new AppMessage(Requisition.NOP, null);
         }
@@ -411,7 +463,7 @@ public class View extends ReceiverAdapter implements RequestHandler
 
         if(controlResponse.size() == 0)
         {
-            System.out.println("Tamanho 0");
+            System.out.println("0");
             return null;
         }
 
@@ -433,11 +485,112 @@ public class View extends ReceiverAdapter implements RequestHandler
         // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
         if(nop_counter == controlResponse.size())
         {
-            System.out.println("So nop");
+            System.out.println("NOP");
             return null;
         }
 
         // caso contrario, diz que o usuario foi criado com sucesso
+        System.out.println("Chegou aqui");
         return (ArrayList<Sala>) ((AppMessage) controlResponse.get(non_nop_index)).content;
+    }
+
+    private Address get_leiloeiro_add(Sala sala) throws Exception
+    {
+        AppMessage list_item = new AppMessage(Requisition.VIEW_REQUEST_AUCTIONEER, sala,
+                channelView.getAddress(), sequenceNumber);
+        sequenceNumber++;
+
+        List controlResponse = dispatcherView.sendRequestMulticast(list_item, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+
+        if(controlResponse.size() == 0)
+            return null;
+
+        int nop_counter = 0;
+        int non_nop_index = -1;
+        int count = -1;
+
+        for(Object control_resp : controlResponse)
+        {
+            count++;
+            AppMessage response = (AppMessage) control_resp;
+
+            if (response.requisition == Requisition.NOP)
+                nop_counter++;
+            else
+                non_nop_index = count;
+        }
+
+        // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
+        if(nop_counter == controlResponse.size())
+            return null;
+
+        // caso contrario, diz que o usuario foi criado com sucesso
+        return (Address) ((AppMessage) controlResponse.get(non_nop_index)).content;
+    }
+
+    private Sala pede_para_entrar_na_sala(Address leiloeiro) throws Exception
+    {
+        AppMessage pedido = new AppMessage(Requisition.VIEW_REQUEST_ENTER_ROOM, null);
+
+        Object response = dispatcherView.sendRequestUnicast(leiloeiro, pedido, ResponseMode.GET_ALL);
+        AppMessage msg = (AppMessage) response;
+
+        return (Sala) msg.content;
+    }
+
+    private void apresenta_para_sala(Sala sala, String user) throws Exception
+    {
+        Object[] content = {user, sala.id};
+        AppMessage ola = new AppMessage(Requisition.BONJOUR, content);
+
+        List response = dispatcherView.sendRequestAnycast(sala.getUsers_addr(), ola, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+    }
+
+    private boolean da_lance(Sala sala, Lance lance) throws Exception
+    {
+        AppMessage novo_lance = new AppMessage(Requisition.VIEW_REQUEST_NEW_BID, lance);
+
+        List response = dispatcherView.sendRequestAnycast(sala.getUsers_addr(), novo_lance, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+
+        if(response.size() == 0)
+        {
+            return false;
+        }
+
+        for(Object control_resp : response)
+        {
+            AppMessage msg = (AppMessage) control_resp;
+
+            if(msg.requisition == Requisition.VIEW_RESPONSE_NEW_BID && ((boolean) msg.content == false))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private Object recebe_lance(AppMessage message) throws Exception
+    {
+        Lance lance = (Lance) message.content;
+
+        if(sala_que_esta.getLances().size() > 0)
+        {
+            Lance ultimo = sala_que_esta.getLances().lastElement();
+
+            if (lance.getValue() > ultimo.getValue())
+            {
+                sala_que_esta.insert_lance(lance);
+                System.out.println("[NOVO LANCE]: " + lance);
+                return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
+            }
+            return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, false);
+        }
+        else
+        {
+            sala_que_esta.insert_lance(lance);
+            System.out.println("[NOVO LANCE]: " + lance);
+            return new AppMessage(Requisition.VIEW_RESPONSE_NEW_BID, true);
+        }
     }
 }

@@ -62,6 +62,18 @@ public class RequestDispatcher
         return this.dispatcher.castMessage(cluster, message, options);
     }
 
+    public RspList sendRequestAnycast(Collection<Address> cluster, Object value, ResponseMode responseMode, Address remove) throws Exception
+    {
+        Message message = new Message(null, value);
+
+        RequestOptions options = new RequestOptions();
+        options.setMode(responseMode);
+        options.setAnycasting(true);
+        options.setExclusionList(remove);
+
+        return this.dispatcher.castMessage(cluster, message, options);
+    }
+
     // funcao para enviar uma mensagem de forma unicast
     public Object sendRequestUnicast(Address receiver, Object value, ResponseMode responseMode) throws Exception
     {
