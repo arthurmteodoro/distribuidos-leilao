@@ -4,11 +4,16 @@ import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
+import org.jgroups.util.RspList;
+import org.jgroups.util.Util;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-
-// TODO : caso exista mais de um controle, ele tambem vai ter que estar na lista de usuarios que vai participar do leilao para poder manter sua copia ok. Possiveis solucoes: (1) pegar todos os caras que sao controle antes e ja inserilos, (2) ficar trocando mensagem entre o controle para resolver isso, (3) juntas as respostas das salas diferentes
 
 public class Control extends ReceiverAdapter implements RequestHandler
 {
@@ -17,6 +22,8 @@ public class Control extends ReceiverAdapter implements RequestHandler
 
     private JChannel channelView;
     private RequestDispatcher dispatcherView;
+
+    private JChannel channelControlSync;
 
     private ArrayList<Sala> salas;
     int sala_id = 0;
@@ -49,6 +56,12 @@ public class Control extends ReceiverAdapter implements RequestHandler
         // se conecta aos canais do controle e da visao
         this.channelControl.connect("AuctionControlCluster");
         this.channelView.connect("AuctionViewCluster");
+
+        this.channelControlSync = new JChannel("auction.xml");
+        this.channelControlSync.setReceiver(this);
+        this.channelControlSync.connect("AuctionControlSyncCluster");
+        this.channelControlSync.getState(null, 10000);
+
         eventloop();
         this.channelControl.close();
         this.channelView.close();
@@ -92,6 +105,14 @@ public class Control extends ReceiverAdapter implements RequestHandler
                 return recebe_lance(messageReceived);
             else if(messageReceived.requisition == Requisition.VIEW_REQUEST_CLOSE_ROOM)
                 return fecha_leilao(messageReceived);
+            else if(messageReceived.requisition == Requisition.CONTROL_GET_CONTROL_VIEW_ADDRESS)
+                return pedido_controle_view_addr(messageReceived);
+            else if(messageReceived.requisition == Requisition.CONTROL_ASK_CONTROL_PROCESS)
+                return pedido_controle_addr(messageReceived);
+            else if(messageReceived.requisition == Requisition.CONTROL_SEND_ROOM_CONTROL)
+                return recebe_sala_outro_controle(messageReceived);
+            else if(messageReceived.requisition == Requisition.VIEW_REQUEST_HISTORY)
+                return list_history(messageReceived);
 
             return new AppMessage(Requisition.NOP, null); //caso nao seja nenhuma requisicao para o controle
         }
@@ -101,6 +122,33 @@ public class Control extends ReceiverAdapter implements RequestHandler
             System.err.flush();
             return new AppMessage(Requisition.CLASS_ERROR, null);
         }
+    }
+
+    public void getState(OutputStream output) throws Exception {
+        Object[] state = new Object[2];
+
+        state[0] = this.salas;
+        state[1] = this.sala_id;
+
+        Util.objectToStream(state, new DataOutputStream(output));
+    }
+
+    public void setState(InputStream input) throws Exception {
+
+        Object[] state = (Object[]) Util.objectFromStream(new DataInputStream(input));
+
+        this.salas = (ArrayList<Sala>) state[0];
+        this.sala_id = (int) state[1];
+    }
+
+    private Object pedido_controle_addr(AppMessage messageReceived)
+    {
+        return new AppMessage(Requisition.RESPONSE_CONTROL_PROCESS, channelControl.getAddress());
+    }
+
+    private Object pedido_controle_view_addr(AppMessage messageReceived)
+    {
+        return new AppMessage(Requisition.RESPONSE_CONTROL_VIEW_ADDRESS, channelView.getAddress());
     }
 
     // funcao para tratamento do pedido de login
@@ -252,6 +300,11 @@ public class Control extends ReceiverAdapter implements RequestHandler
     {
         Object[] content = (Object[]) messageReceived.content;
 
+        if(existe_sala_item((Item) content[0]))
+        {
+            return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, Boolean.TRUE);
+        }
+
         Object[] pedido_troca = {content[0], true};
         AppMessage control_list_item = new AppMessage(Requisition.CONTROL_REQUEST_CHANGE_ITEM_STATE, pedido_troca,
                 messageReceived.clientAddress, messageReceived.sequenceNumber);
@@ -281,13 +334,97 @@ public class Control extends ReceiverAdapter implements RequestHandler
         Address end = (Address) content[1];
         String leiloeiro_nome = (String) content[2];
 
+        List<Address> controle_enderecos_na_visao = get_control_view_address();
+
         Sala nova_sala = new Sala(item, end, leiloeiro_nome, sala_id);
         nova_sala.insert_user("CONTROLE"+channelView.getAddress(), channelView.getAddress());
+        for(Address i : controle_enderecos_na_visao)
+        {
+            nova_sala.insert_user("CONTROLE"+i, i);
+        }
         nova_sala.insert_user(leiloeiro_nome, leiloeiro);
+
+        List<Address> enderecos_controle = get_control_address();
+
+        if(enderecos_controle.size() > 0)
+        {
+            AppMessage msg = new AppMessage(Requisition.CONTROL_SEND_ROOM_CONTROL, nova_sala);
+            dispatcherControl.sendRequestAnycast(enderecos_controle, msg, ResponseMode.GET_ALL, channelControl.getAddress());
+        }
 
         salas.add(nova_sala);
         sala_id++;
         return new AppMessage(Requisition.CONTROL_RESPONSE_CREATE_ROOM, nova_sala);
+    }
+
+    private List<Address> get_control_view_address() throws Exception
+    {
+        AppMessage msg = new AppMessage(Requisition.CONTROL_GET_CONTROL_VIEW_ADDRESS, null);
+
+        List responses = dispatcherControl.sendRequestMulticast(msg, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responses.size() == 0)
+            return new ArrayList<>();
+
+        int nop_counter = 0;
+
+        List<Address> enderecos = new ArrayList<>();
+
+        for(Object response : responses)
+        {
+            AppMessage msg_controle = (AppMessage) response;
+
+            if(msg_controle.content != null)
+            {
+                enderecos.add((Address) msg_controle.content);
+            }
+        }
+
+        return enderecos;
+    }
+
+    private List<Address> get_control_address() throws Exception
+    {
+        AppMessage msg = new AppMessage(Requisition.CONTROL_ASK_CONTROL_PROCESS, null);
+
+        List responses = dispatcherControl.sendRequestMulticast(msg, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responses.size() == 0)
+            return new ArrayList<>();
+
+        int nop_counter = 0;
+
+        List<Address> enderecos = new ArrayList<>();
+
+        for(Object response : responses)
+        {
+            AppMessage msg_controle = (AppMessage) response;
+
+            if(msg_controle.content != null)
+            {
+                enderecos.add((Address) msg_controle.content);
+            }
+        }
+
+        return enderecos;
+    }
+
+    private Object recebe_sala_outro_controle(AppMessage message)
+    {
+        Sala nova_sala = (Sala) message.content;
+        salas.add(nova_sala);
+        sala_id++;
+        return new AppMessage(Requisition.CONTROL_REPONSE_RECEIVE_ROOM, null);
+    }
+
+    private boolean existe_sala_item(Item item)
+    {
+        for(Sala s : this.salas)
+        {
+            if(s.getItem().getProprietario().equals(item.getProprietario()) && s.getItem().getName().equals(item.getName()))
+                return true;
+        }
+        return false;
     }
 
     private Object get_leiloeiro(AppMessage messageReceived) throws Exception
@@ -326,7 +463,7 @@ public class Control extends ReceiverAdapter implements RequestHandler
         Sala sala = salas.get((int) messageReceived.content);
         Lance lance_final = sala.getLances().lastElement();
 
-        LeilaoResultado resultado = new LeilaoResultado(lance_final.getUser(), sala.getItem(), lance_final.getValue());
+        LeilaoResultado resultado = new LeilaoResultado(lance_final.getUser(), sala.getItem(), lance_final.getValue(), sala.getLances());
 
         AppMessage controlLogin = new AppMessage(Requisition.CONTROL_REQUEST_SAVE_RESULT, resultado,
                 messageReceived.clientAddress, messageReceived.sequenceNumber);
@@ -357,7 +494,42 @@ public class Control extends ReceiverAdapter implements RequestHandler
             return new AppMessage(Requisition.NOP, null);
 
         // caso contrario, responde que o login foi realizo com sucesso
+        this.salas.remove(sala);
         return new AppMessage(Requisition.CONTROL_RESPONSE_CLOSE_ROOM, true);
+    }
+
+    private Object list_history(AppMessage messageReceived) throws Exception
+    {
+        AppMessage control_history = new AppMessage(Requisition.CONTROL_REQUEST_HISTORY, null,
+                messageReceived.clientAddress, messageReceived.sequenceNumber);
+
+        List responsesListItem = dispatcherControl.sendRequestMulticast(control_history, ResponseMode.GET_ALL, channelControl.getAddress()).getResults();
+
+        if(responsesListItem.size() == 0)
+            return new AppMessage(Requisition.CONTROL_RESPONSE_HISTORY, null);
+
+        int nop_counter = 0;
+        int index_nao_nop = 0;
+        int cont = -1;
+
+        for(Object response : responsesListItem)
+        {
+            cont++;
+            AppMessage msg = (AppMessage) response;
+
+            if(msg.requisition == Requisition.NOP)
+                nop_counter++;
+            else
+                index_nao_nop = cont;
+        }
+
+        // caso so veio respostas nop, responde que nao realizou nenhuma operacao
+        if(nop_counter == responsesListItem.size())
+            return new AppMessage(Requisition.NOP, null);
+
+        // caso contrario, responde que criou um novo usuario com sucesso
+        AppMessage msg_model = (AppMessage) responsesListItem.get(index_nao_nop);
+        return new AppMessage(Requisition.CONTROL_RESPONSE_HISTORY, msg_model.content);
     }
 
 }

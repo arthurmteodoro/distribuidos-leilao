@@ -53,22 +53,25 @@ public class View extends ReceiverAdapter implements RequestHandler
     {
         boolean exit = false;
         Scanner keyboard = new Scanner(System.in);
-        String input = "";
+        int input;
 
         // enquanto o usuario nao pedir para sair "ba dum tss :)"
         while(!exit)
         {
-            System.out.print(">");
-            input = keyboard.nextLine().toLowerCase();
+            System.out.println("\n\n\n=============== BEM VINDO ===============");
+            System.out.println("1. Criar usuario");
+            System.out.println("2. Logar");
+            System.out.println("0. Fechar");
+            input = Integer.valueOf(keyboard.nextLine().toLowerCase());
 
             // caso for para sair,
-            if(input.startsWith("exit"))
+            if(input == 0)
                 //System.exit(0);
                 exit = true;
             else
             {
                 // caso o pedido seja para criar um novo usuario
-                if(input.equals("create user"))
+                if(input == 1)
                 {
                     System.out.print("User: ");
                     String user = keyboard.nextLine().toLowerCase();
@@ -81,7 +84,7 @@ public class View extends ReceiverAdapter implements RequestHandler
                         System.out.println("user creation failure");
                 }
                 // caso seja um pedido de login
-                else if(input.equals("login"))
+                else if(input == 2)
                 {
                     System.out.print("User: ");
                     String user = keyboard.nextLine().toLowerCase();
@@ -116,6 +119,7 @@ public class View extends ReceiverAdapter implements RequestHandler
             System.out.println("3. Criar Sala");
             System.out.println("4. Listar salas existentes");
             System.out.println("5. Entrar em uma sala");
+            System.out.println("6. Mostrar histórico de leilões");
             System.out.println("0. Logout");
             System.out.print(">");
             String input = keyboard.nextLine().toLowerCase();
@@ -150,30 +154,38 @@ public class View extends ReceiverAdapter implements RequestHandler
             else if(Integer.valueOf(input) == 3)
             {
                 ArrayList<Item> itens = get_itens_para_leilao();
-                if(itens == null)
-                    System.out.println("Erro na busca de novos itens");
-                else
-                    System.out.println("[");
-                int cont = 0;
-                for(Item i : itens)
+                if(itens.size() > 0)
                 {
-                    System.out.println("\t["+cont+"]{Nome: "+i.getName()+" Descrição: "+i.getDescricao()+" Valor mínimo: "+i.getValue()+" Dono: "+i.getProprietario()+"},");
+                    if (itens == null)
+                        System.out.println("Erro na busca de novos itens");
+                    else
+                        System.out.println("[");
+                    int cont = 0;
+                    for (Item i : itens)
+                    {
+                        System.out.println("\t[" + cont + "]{Nome: " + i.getName() + " Descrição: " + i.getDescricao() + " Valor mínimo: " + i.getValue() + " Dono: " + i.getProprietario() + "},");
+                        cont++;
+                    }
+
+                    System.out.print("Digite o indice do item que deseja leiloar: ");
+                    int index = Integer.parseInt(keyboard.nextLine());
+
+                    if(index == -1)
+                        continue;
+
+                    Object valor = create_room(itens.get(index), usuario_atual);
+                    if (valor instanceof Boolean)
+                        System.out.println("Erro na criacao de sala");
+                    else
+                    {
+                        System.out.println("Sala criada com sucesso");
+                        Sala sala = (Sala) valor;
+                        em_sala(usuario_atual, sala);
+                    }
                 }
-
-                System.out.print("Digite o indice do item que deseja leiloar: ");
-                int index = Integer.parseInt(keyboard.nextLine());
-
-                Object valor = create_room(itens.get(index), usuario_atual);
-                if(valor instanceof Boolean)
-                    System.out.println("Erro na criacao de sala");
                 else
                 {
-                    System.out.println("Sala criada com sucesso");
-                    System.out.println("\n\nATENCAO LEILOEIRO, COM GRANDES PODERES VEM GRANDES RESPONSABILIDADES");
-                    System.out.println("VOCÊ É O RESPONSÁVEL POR TERMINAR COM O LEILÃO");
-                    System.out.println("Para isso, dê um lance do valor -1");
-                    Sala sala = (Sala) valor;
-                    em_sala(usuario_atual, sala);
+                    System.out.println("\n\n");
                 }
             }
             else if(Integer.valueOf(input) == 4)
@@ -195,11 +207,32 @@ public class View extends ReceiverAdapter implements RequestHandler
                 if(index_sala == -1)
                     continue;
 
-                Address leiloeiro = get_leiloeiro_add(salas_existentes.get(index_sala));
+                Sala sala = salas_existentes.get(index_sala);
 
-                Sala sala = pede_para_entrar_na_sala(leiloeiro);
                 apresenta_para_sala(sala, usuario_atual);
                 em_sala(usuario_atual, sala);
+            }
+            else if(Integer.valueOf(input) == 6)
+            {
+                ArrayList<LeilaoResultado> leiloes = pega_historico();
+                for(int i = 0; i < leiloes.size(); i++)
+                {
+                    System.out.println("\t["+i+"] "+leiloes.get(i));
+                }
+
+                System.out.println("Selecione o leilao para ver detalhes (-1 caso nao queria)");
+
+                int index_sala = Integer.parseInt(keyboard.nextLine());
+
+                if(index_sala == -1)
+                    continue;
+
+                List<Lance> lances = leiloes.get(index_sala).historico_lances;
+
+                for(int i = 0; i < lances.size(); i++)
+                {
+                    System.out.println("\t\t"+lances.get(i));
+                }
             }
             else if(Integer.valueOf(input) == 0)
                 logout = true;
@@ -223,7 +256,6 @@ public class View extends ReceiverAdapter implements RequestHandler
             if(valor_lance != -1)
             {
                 Lance lance = new Lance(nome_user, valor_lance, sala.id);
-                //System.out.println(sala_que_esta.getUsers_addr());
                 if (da_lance(sala_que_esta, lance))
                 {
                     sala_que_esta.insert_lance(lance);
@@ -234,19 +266,14 @@ public class View extends ReceiverAdapter implements RequestHandler
             }
             else
             {
-                if(this.sala_que_esta.getLeiloeiro().toString().equals(channelView.getAddress().toString()))
+                if(!this.acabou_leilao)
                 {
                     System.out.println("ATENÇÃO: VOCÊ DESEJA MESMO FECHAR ESTE LEILAO? (Y/N)");
-                    if(keyboard.nextLine().toLowerCase().equals("y"))
+                    if (keyboard.nextLine().toLowerCase().equals("y"))
                     {
                         fecha_leilao(sala_que_esta);
-                    }
-                    else
+                    } else
                         continue;
-                }
-                else
-                {
-                    this.acabou_leilao = true;
                 }
             }
         }
@@ -261,9 +288,9 @@ public class View extends ReceiverAdapter implements RequestHandler
             AppMessage messageReceived = (AppMessage) message.getObject();
             if(sala_que_esta != null)
             {
-                if (messageReceived.requisition == Requisition.VIEW_REQUEST_ENTER_ROOM)
+                /*if (messageReceived.requisition == Requisition.VIEW_REQUEST_ENTER_ROOM)
                     return new AppMessage(Requisition.VIEW_RESPONSE_ENTER_ROOM, sala_que_esta);
-                else if (messageReceived.requisition == Requisition.BONJOUR)
+                else*/ if (messageReceived.requisition == Requisition.BONJOUR)
                 {
                     Object[] content = (Object[]) messageReceived.content;
                     sala_que_esta.insert_user((String)content[0], message.getSrc());
@@ -517,13 +544,13 @@ public class View extends ReceiverAdapter implements RequestHandler
         return (ArrayList<Sala>) ((AppMessage) controlResponse.get(non_nop_index)).content;
     }
 
-    private Address get_leiloeiro_add(Sala sala) throws Exception
+    private Sala pede_para_entrar_na_sala(Sala sala) throws Exception
     {
-        AppMessage list_item = new AppMessage(Requisition.VIEW_REQUEST_AUCTIONEER, sala,
+        AppMessage pedido = new AppMessage(Requisition.VIEW_REQUEST_ENTER_ROOM, sala,
                 channelView.getAddress(), sequenceNumber);
         sequenceNumber++;
 
-        List controlResponse = dispatcherView.sendRequestMulticast(list_item, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+        List controlResponse = dispatcherView.sendRequestMulticast(pedido, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
 
         if(controlResponse.size() == 0)
             return null;
@@ -543,23 +570,7 @@ public class View extends ReceiverAdapter implements RequestHandler
                 non_nop_index = count;
         }
 
-        // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
-        if(nop_counter == controlResponse.size())
-            return null;
-
-        // caso contrario, diz que o usuario foi criado com sucesso
-        return (Address) ((AppMessage) controlResponse.get(non_nop_index)).content;
-    }
-
-    private Sala pede_para_entrar_na_sala(Address leiloeiro) throws Exception
-    {
-        AppMessage pedido = new AppMessage(Requisition.VIEW_REQUEST_ENTER_ROOM, null);
-        sequenceNumber++;
-
-        Object response = dispatcherView.sendRequestUnicast(leiloeiro, pedido, ResponseMode.GET_ALL);
-        AppMessage msg = (AppMessage) response;
-
-        return (Sala) msg.content;
+        return (Sala) ((AppMessage)controlResponse.get(non_nop_index)).content;
     }
 
     private void apresenta_para_sala(Sala sala, String user) throws Exception
@@ -659,7 +670,10 @@ public class View extends ReceiverAdapter implements RequestHandler
         List controlResponse = dispatcherView.sendRequestMulticast(close, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
 
         if(controlResponse.size() == 0)
+        {
+            System.out.println("Mandou false por causa do resultado ser vazio");
             return false;
+        }
 
         int nop_counter = 0;
         int non_nop_index = -1;
@@ -671,7 +685,10 @@ public class View extends ReceiverAdapter implements RequestHandler
             AppMessage response = (AppMessage) control_resp;
 
             if(response.requisition == Requisition.CONTROL_RESPONSE_CLOSE_ROOM && !((boolean) response.content))
+            {
+                System.out.println("Mandou false pq veio uma mensagem que nao seu certo fechar a sala");
                 return false;
+            }
             else if (response.requisition == Requisition.NOP)
                 nop_counter++;
             else
@@ -680,10 +697,47 @@ public class View extends ReceiverAdapter implements RequestHandler
 
         // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
         if(nop_counter == controlResponse.size())
+        {
+            System.out.println("Mandou false pq so veio nop");
             return false;
+        }
 
         this.acabou_leilao = true;
         System.out.println("LEILAO TERMINADO!!!!!");
         return true;
+    }
+
+    private ArrayList<LeilaoResultado> pega_historico() throws Exception
+    {
+        AppMessage list = new AppMessage(Requisition.VIEW_REQUEST_HISTORY, null,
+                channelView.getAddress(), sequenceNumber);
+        sequenceNumber++;
+
+        List controlResponse = dispatcherView.sendRequestMulticast(list, ResponseMode.GET_ALL, channelView.getAddress()).getResults();
+
+        if(controlResponse.size() == 0)
+            return null;
+
+        int nop_counter = 0;
+        int non_nop_index = -1;
+        int count = -1;
+
+        for(Object control_resp : controlResponse)
+        {
+            count++;
+            AppMessage response = (AppMessage) control_resp;
+
+            if (response.requisition == Requisition.NOP)
+                nop_counter++;
+            else
+                non_nop_index = count;
+        }
+
+        // caso nenhuma acao foi tomada ao pedido de criacao de usuario, retorna que o usuario nao foi criado
+        if(nop_counter == controlResponse.size())
+            return null;
+
+        // caso contrario, diz que o usuario foi criado com sucesso
+        return (ArrayList<LeilaoResultado>) ((AppMessage) controlResponse.get(non_nop_index)).content;
     }
 }

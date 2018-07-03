@@ -92,4 +92,16 @@ public class Item implements Serializable
         result = 31 * result + (em_leilao ? 1 : 0);
         return result;
     }
+
+    @Override
+    public String toString()
+    {
+        return "Item{" +
+                "name='" + name + '\'' +
+                ", descricao='" + descricao + '\'' +
+                ", value=" + value +
+                ", proprietario='" + proprietario + '\'' +
+                ", em_leilao=" + em_leilao +
+                '}';
+    }
 }

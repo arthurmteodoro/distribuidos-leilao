@@ -1,9 +1,9 @@
-import com.sun.org.apache.regexp.internal.RE;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
+import org.jgroups.util.Util;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -11,9 +11,6 @@ import java.util.HashMap;
 import java.util.Timer;
 import java.util.TimerTask;
 
-/*
-* TODO: Mudar a forma de não existir mensagem duplicadas vindas da visão (porque da forma que está o modelo necessita de dados vindo da visão)
-*/
 
 public class Model extends ReceiverAdapter implements RequestHandler
 {
@@ -22,6 +19,8 @@ public class Model extends ReceiverAdapter implements RequestHandler
 
     private JChannel channelControl;
     private RequestDispatcher dispatcherControl;
+
+    private JChannel channelModelSync;
 
     private HashMap<String, String> usersAndKeys; //mapa para guardar os usuarios e suas senhas
     private HashMap<Address, Integer> seqs; //mapa para manter o numero de sequencia dos enderecos da visao
@@ -64,6 +63,14 @@ public class Model extends ReceiverAdapter implements RequestHandler
         this.channelControl.connect("AuctionControlCluster");
 
         load_clients(); // carrega os usuarios no seu hd
+        load_itens();
+        load_history();
+
+        this.channelModelSync = new JChannel("auction.xml");
+        this.channelModelSync.setReceiver(this);
+        this.channelModelSync.connect("AuctionModelSyncCluster");
+        this.channelModelSync.getState(null, 10000);
+
         Timer timer = new Timer(); //cria uma nova tarefa que a cada 5 segundos vai escrever os mapas no hd
         timer.scheduleAtFixedRate(new WriterTask(), 5000, 5000);
 
@@ -75,6 +82,25 @@ public class Model extends ReceiverAdapter implements RequestHandler
     private void eventLoop() throws Exception
     {
         while(true);
+    }
+
+    public void getState(OutputStream output) throws Exception {
+        Object[] state = new Object[3];
+
+        state[0] = this.usersAndKeys;
+        state[1] = this.items;
+        state[2] = this.resultados;
+
+        Util.objectToStream(state, new DataOutputStream(output));
+    }
+
+    public void setState(InputStream input) throws Exception {
+
+        Object[] state = (Object[]) Util.objectFromStream(new DataInputStream(input));
+
+        this.usersAndKeys = (HashMap<String, String>) state[0];
+        this.items = (ArrayList<Item>) state[1];
+        this.resultados = (ArrayList<LeilaoResultado>) state[2];
     }
 
     // funcao de interrupcao quando uma nova mensagem e recebida
@@ -137,8 +163,20 @@ public class Model extends ReceiverAdapter implements RequestHandler
                 {
                     LeilaoResultado res = (LeilaoResultado) messageReceived.content;
                     if (final_leilao(res))
+                    {
                         return new AppMessage(Requisition.MODEL_RESPONSE_SAVE_RESULT, true);
+                    }
                 }
+                else if(messageReceived.requisition == Requisition.CONTROL_GET_CONTROL_VIEW_ADDRESS)
+                {
+                    return new AppMessage(Requisition.RESPONSE_CONTROL_VIEW_ADDRESS, null);
+                }
+                else if(messageReceived.requisition == Requisition.CONTROL_ASK_CONTROL_PROCESS)
+                {
+                    return new AppMessage(Requisition.RESPONSE_CONTROL_PROCESS, null);
+                }
+                else if(messageReceived.requisition == Requisition.CONTROL_REQUEST_HISTORY)
+                    return new AppMessage(Requisition.MODEL_RESPONSE_HISTORY, this.resultados);
             }
             // a operacao pedida nao seja para o modelo ou e uma mensagem duplicada, envia NOP (nenhuma operacao)
             return new AppMessage(Requisition.NOP, null);
@@ -207,7 +245,22 @@ public class Model extends ReceiverAdapter implements RequestHandler
     private boolean final_leilao(LeilaoResultado res)
     {
         resultados.add(res);
-        return true;
+        Item item_na_lista = null;
+
+        for(Item i : items)
+        {
+            if(i.getProprietario().equals(res.item.getProprietario()) && i.getName().equals(res.item.getName()))
+            {
+                item_na_lista = i;
+            }
+        }
+        if(item_na_lista != null)
+        {
+            item_na_lista.setEm_leilao(false);
+            item_na_lista.setProprietario(res.usuario);
+            return true;
+        }
+        return false;
     }
 
     // funcao para escrever os usuarios no hd
@@ -219,6 +272,28 @@ public class Model extends ReceiverAdapter implements RequestHandler
 
         ObjectOutputStream writer = new ObjectOutputStream(new FileOutputStream(file)); // cria o escritor de arquivo
         writer.writeObject(this.usersAndKeys); // escreve o objeto no arquivo
+        writer.close();
+    }
+
+    private void write_itens() throws IOException
+    {
+        File file = new File("data/itens.bin");
+        if(!file.exists()) // verifica se o arquivo nao existe, caso nao existe, cria um novo
+            file.createNewFile();
+
+        ObjectOutputStream writer = new ObjectOutputStream(new FileOutputStream(file)); // cria o escritor de arquivo
+        writer.writeObject(this.items); // escreve o objeto no arquivo
+        writer.close();
+    }
+
+    private void write_history() throws IOException
+    {
+        File file = new File("data/history.bin");
+        if(!file.exists()) // verifica se o arquivo nao existe, caso nao existe, cria um novo
+            file.createNewFile();
+
+        ObjectOutputStream writer = new ObjectOutputStream(new FileOutputStream(file)); // cria o escritor de arquivo
+        writer.writeObject(this.resultados); // escreve o objeto no arquivo
         writer.close();
     }
 
@@ -241,6 +316,44 @@ public class Model extends ReceiverAdapter implements RequestHandler
             this.usersAndKeys = new HashMap<>();
     }
 
+    private void load_itens() throws IOException, ClassNotFoundException
+    {
+        File file = new File("data/itens.bin");
+        if(file.exists()) //so caso o arquivo exite, le o arquivo
+        {
+            try
+            {
+                ObjectInputStream reader = new ObjectInputStream(new FileInputStream(file)); // cria o leitor de arquivo
+                this.items = (ArrayList<Item>) reader.readObject(); // le o objeto do arquivo e envia para o mapa
+                reader.close();
+            } catch (EOFException e)
+            {
+                this.items = new ArrayList<>(); //caso deu erro na leitura do objeto, cria um limpo
+            }
+        }
+        else
+            this.items = new ArrayList<>();
+    }
+
+    private void load_history() throws IOException, ClassNotFoundException
+    {
+        File file = new File("data/history.bin");
+        if(file.exists()) //so caso o arquivo exite, le o arquivo
+        {
+            try
+            {
+                ObjectInputStream reader = new ObjectInputStream(new FileInputStream(file)); // cria o leitor de arquivo
+                this.resultados = (ArrayList<LeilaoResultado>) reader.readObject(); // le o objeto do arquivo e envia para o mapa
+                reader.close();
+            } catch (EOFException e)
+            {
+                this.resultados = new ArrayList<>(); //caso deu erro na leitura do objeto, cria um limpo
+            }
+        }
+        else
+            this.resultados = new ArrayList<>();
+    }
+
     // classe do tipo TimerTask para ser usada repetidamente pelo timer - escreve os mapas no arquivo
     class WriterTask extends TimerTask
     {
@@ -250,6 +363,8 @@ public class Model extends ReceiverAdapter implements RequestHandler
             try
             {
                 write_users();
+                write_itens();
+                write_history();
             } catch (IOException e)
             {
                 e.printStackTrace();
