@@ -1,8 +1,8 @@
+package Misc;
+
 import org.jgroups.Address;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Objects;
 import java.util.Vector;
 
 public class Sala implements Serializable

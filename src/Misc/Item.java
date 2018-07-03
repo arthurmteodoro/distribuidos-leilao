@@ -1,3 +1,5 @@
+package Misc;
+
 import java.io.Serializable;
 
 public class Item implements Serializable
@@ -96,7 +98,7 @@ public class Item implements Serializable
     @Override
     public String toString()
     {
-        return "Item{" +
+        return "Misc.Item{" +
                 "name='" + name + '\'' +
                 ", descricao='" + descricao + '\'' +
                 ", value=" + value +

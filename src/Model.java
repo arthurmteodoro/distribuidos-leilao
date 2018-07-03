@@ -1,3 +1,7 @@
+import Misc.AppMessage;
+import Misc.Item;
+import Misc.LeilaoResultado;
+import Misc.Requisition;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;

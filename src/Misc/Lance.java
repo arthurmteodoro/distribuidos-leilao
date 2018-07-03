@@ -1,3 +1,5 @@
+package Misc;
+
 import java.io.Serializable;
 
 public class Lance implements Serializable

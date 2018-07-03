@@ -1,16 +1,13 @@
-import org.jgroups.Address;
+import Misc.*;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.blocks.RequestHandler;
 import org.jgroups.blocks.ResponseMode;
 
-import javax.swing.plaf.synth.SynthOptionPaneUI;
-import java.io.Console;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
-import java.util.Vector;
 
 public class View extends ReceiverAdapter implements RequestHandler
 {
@@ -62,11 +59,11 @@ public class View extends ReceiverAdapter implements RequestHandler
             System.out.println("1. Criar usuario");
             System.out.println("2. Logar");
             System.out.println("0. Fechar");
+            System.out.print(">");
             input = Integer.valueOf(keyboard.nextLine().toLowerCase());
 
             // caso for para sair,
             if(input == 0)
-                //System.exit(0);
                 exit = true;
             else
             {
@@ -134,7 +131,7 @@ public class View extends ReceiverAdapter implements RequestHandler
                 Double item_value = Double.valueOf(keyboard.nextLine());
 
                 if(create_item(item_name, item_description, item_value, usuario_atual))
-                    System.out.println("Item criado com sucesso");
+                    System.out.println("Misc.Item criado com sucesso");
                 else
                     System.out.println("Falha na criacao de novo item");
 
@@ -288,8 +285,8 @@ public class View extends ReceiverAdapter implements RequestHandler
             AppMessage messageReceived = (AppMessage) message.getObject();
             if(sala_que_esta != null)
             {
-                /*if (messageReceived.requisition == Requisition.VIEW_REQUEST_ENTER_ROOM)
-                    return new AppMessage(Requisition.VIEW_RESPONSE_ENTER_ROOM, sala_que_esta);
+                /*if (messageReceived.requisition == Misc.Requisition.VIEW_REQUEST_ENTER_ROOM)
+                    return new Misc.AppMessage(Misc.Requisition.VIEW_RESPONSE_ENTER_ROOM, sala_que_esta);
                 else*/ if (messageReceived.requisition == Requisition.BONJOUR)
                 {
                     Object[] content = (Object[]) messageReceived.content;

@@ -1,3 +1,8 @@
+package Misc;
+
+import Misc.Item;
+import Misc.Lance;
+
 import java.io.Serializable;
 import java.util.List;
 
@@ -19,6 +24,6 @@ public class LeilaoResultado implements Serializable
     @Override
     public String toString()
     {
-        return "Ganhador: "+this.usuario+"\tItem: "+this.item.getName()+"\tValor: "+this.valor;
+        return "Ganhador: "+this.usuario+"\tMisc.Item: "+this.item.getName()+"\tValor: "+this.valor;
     }
 }

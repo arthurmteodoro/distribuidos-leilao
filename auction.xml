@@ -11,7 +11,7 @@
     <MFC max_credits="2M"
 	 min_threshold="0.4"/>
     <COMPRESS compression_level="5"/>
-    <FRAG2/>
+    <FRAG2 frag_size="4096"/>
     <RATE_LIMITER max_bytes="50M"
                   time_period="1000"/>
     <pbcast.GMS log_view_warnings="false"/>

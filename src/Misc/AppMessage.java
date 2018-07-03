@@ -1,3 +1,5 @@
+package Misc;
+
 import org.jgroups.Address;
 
 import java.io.Serializable;
